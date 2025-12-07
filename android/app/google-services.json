@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "442972139102",
+    "project_id": "presence-ecole",
+    "storage_bucket": "presence-ecole.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442972139102:android:c80b61e1ddcdc828bc4ecf",
+        "android_client_info": {
+          "package_name": "com.example.detection_fasciale"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRpd0VIMYDzoOUKy6leqvp51e7rF0qrcM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
