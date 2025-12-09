@@ -69,7 +69,7 @@ class _RegisterFormState extends State<RegisterForm> {
   Future<String> _uploadPhoto(File photo, String userId) async {
     try {
       print('🔄 Début upload Cloudinary pour UID: $userId');
-      String photoUrl = await _cloudinaryService. uploadPhoto(photo, userId);
+      String photoUrl = await _cloudinaryService.uploadPhoto(photo, userId);
       print('✅ Photo uploadée !  URL: $photoUrl');
       return photoUrl;
     } catch (e) {
@@ -78,107 +78,65 @@ class _RegisterFormState extends State<RegisterForm> {
     }
   }
 
-  // ========== EXTRAIRE L'EMBEDDING AVEC LANDMARKS ==========
   Future<List<double>?> _extraireEmbedding(File imageFile) async {
     try {
       final inputImage = InputImage.fromFile(imageFile);
       final List<Face> faces = await _faceDetector.processImage(inputImage);
 
-      if (faces. isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context). showSnackBar(
-            const SnackBar(
-              content: Text('❌ Aucun visage détecté.  Réessayez.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+      if (faces.isEmpty) {
+        _showSnackBar('Aucun visage détecté');
         return null;
       }
-
       if (faces.length > 1) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Plusieurs visages détectés. Un seul autorisé.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+        _showSnackBar('Plusieurs visages détectés');
         return null;
       }
 
       Face face = faces.first;
-      List<double> embedding = [];
 
-      // 1. Coordonnées du bounding box (4 valeurs)
-      embedding. addAll([
-        face.boundingBox.left,
-        face.boundingBox.top,
-        face.boundingBox.width,
-        face.boundingBox.height,
+      final rect = face.boundingBox;
+      double faceWidth = rect.width;
+      double faceHeight = rect.height;
+      double faceSize = (faceWidth + faceHeight) / 2;
+
+      double centerX = rect.left + faceWidth / 2;
+      double centerY = rect.top + faceHeight / 2;
+
+      List<double> normalizedLandmarks = [];
+
+      final landmarks = [
+        face.landmarks[FaceLandmarkType.leftEye],
+        face.landmarks[FaceLandmarkType.rightEye],
+        face.landmarks[FaceLandmarkType.noseBase],
+        face.landmarks[FaceLandmarkType.leftMouth],
+        face.landmarks[FaceLandmarkType.rightMouth],
+      ];
+
+      for (var landmark in landmarks) {
+        if (landmark != null) {
+          double nx = (landmark.position.x - centerX) / faceSize;
+          double ny = (landmark.position.y - centerY) / faceSize;
+          normalizedLandmarks.addAll([nx, ny]);
+        } else {
+          normalizedLandmarks.addAll([0.0, 0.0]);
+        }
+      }
+
+      normalizedLandmarks.addAll([
+        (face.headEulerAngleX ?? 0.0) / 45.0,
+        (face.headEulerAngleY ?? 0.0) / 45.0,
+        (face.headEulerAngleZ ?? 0.0) / 45.0,
       ]);
 
-      // 2. Landmarks (points caractéristiques) - 10 valeurs
-      // Œil gauche
-      if (face.landmarks[FaceLandmarkType.leftEye] != null) {
-        final leftEye = face.landmarks[FaceLandmarkType.leftEye]!.position;
-        embedding.addAll([leftEye. x.toDouble(), leftEye.y.toDouble()]);
-      } else {
-        embedding.addAll([0.0, 0.0]);
-      }
+      normalizedLandmarks.add(face.smilingProbability ?? 0.0);
+      normalizedLandmarks.add(face.leftEyeOpenProbability ?? 0.5);
+      normalizedLandmarks.add(face.rightEyeOpenProbability ?? 0.5);
 
-      // Œil droit
-      if (face.landmarks[FaceLandmarkType. rightEye] != null) {
-        final rightEye = face.landmarks[FaceLandmarkType.rightEye]!. position;
-        embedding.addAll([rightEye.x.toDouble(), rightEye.y. toDouble()]);
-      } else {
-        embedding.addAll([0.0, 0.0]);
-      }
-
-      // Base du nez
-      if (face.landmarks[FaceLandmarkType.noseBase] != null) {
-        final nose = face.landmarks[FaceLandmarkType.noseBase]!. position;
-        embedding.addAll([nose.x.toDouble(), nose.y.toDouble()]);
-      } else {
-        embedding.addAll([0.0, 0.0]);
-      }
-
-      // Coin gauche de la bouche
-      if (face.landmarks[FaceLandmarkType.leftMouth] != null) {
-        final leftMouth = face.landmarks[FaceLandmarkType.leftMouth]!.position;
-        embedding. addAll([leftMouth.x.toDouble(), leftMouth. y.toDouble()]);
-      } else {
-        embedding.addAll([0.0, 0.0]);
-      }
-
-      // Coin droit de la bouche
-      if (face.landmarks[FaceLandmarkType. rightMouth] != null) {
-        final rightMouth = face.landmarks[FaceLandmarkType.rightMouth]!. position;
-        embedding.addAll([rightMouth.x.toDouble(), rightMouth.y. toDouble()]);
-      } else {
-        embedding.addAll([0.0, 0.0]);
-      }
-
-      // 3. Angles de rotation de la tête (3 valeurs)
-      embedding.addAll([
-        face.headEulerAngleX ?? 0.0,
-        face.headEulerAngleY ?? 0.0,
-        face.headEulerAngleZ ?? 0.0,
-      ]);
-
-      print('✅ Embedding extrait avec ${embedding.length} dimensions');
-      return embedding;
+      print('Embedding normalisé : ${normalizedLandmarks.length} dimensions');
+      return normalizedLandmarks;
     } catch (e) {
-      print('❌ Erreur détection visage : $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur détection : ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      print('Erreur embedding : $e');
+      _showSnackBar('Erreur lors de l\'analyse du visage');
       return null;
     }
   }
@@ -186,7 +144,9 @@ class _RegisterFormState extends State<RegisterForm> {
   // ========== CALCUL SIMILARITÉ COSINUS ==========
   double _calculerSimilarite(List<double> embedding1, List<double> embedding2) {
     if (embedding1.length != embedding2.length) {
-      print('⚠️ Tailles différentes : ${embedding1.length} vs ${embedding2. length}');
+      print(
+        '⚠️ Tailles différentes : ${embedding1.length} vs ${embedding2.length}',
+      );
       return 0.0;
     }
 
@@ -194,7 +154,7 @@ class _RegisterFormState extends State<RegisterForm> {
     double norm1 = 0.0;
     double norm2 = 0.0;
 
-    for (int i = 0; i < embedding1. length; i++) {
+    for (int i = 0; i < embedding1.length; i++) {
       dotProduct += embedding1[i] * embedding2[i];
       norm1 += embedding1[i] * embedding1[i];
       norm2 += embedding2[i] * embedding2[i];
@@ -223,23 +183,26 @@ class _RegisterFormState extends State<RegisterForm> {
 
       for (var doc in users.docs) {
         try {
-          List<double> existingEmbedding = List<double>. from(doc['embedding']);
+          List<double> existingEmbedding = List<double>.from(doc['embedding']);
 
           double similarity = _calculerSimilarite(embedding, existingEmbedding);
 
           String nom = doc['nom'] ?? 'N/A';
           String prenom = doc['prenom'] ?? 'N/A';
-          print('   📊 Similarité avec $prenom $nom : ${(similarity * 100).toStringAsFixed(2)}%');
+          print(
+            '   📊 Similarité avec $prenom $nom : ${(similarity * 100).toStringAsFixed(2)}%',
+          );
 
-          if (similarity > 0.70) {
+          if (similarity > 0.55) {
             print('❌ VISAGE SIMILAIRE DÉTECTÉ !');
             print('   Utilisateur existant : $prenom $nom');
 
             if (mounted) {
-              ScaffoldMessenger.of(context). showSnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                      '❌ Ce visage est déjà enregistré !\nUtilisateur : $prenom $nom\nSimilarité : ${(similarity * 100).toStringAsFixed(0)}%'),
+                    '❌ Ce visage est déjà enregistré !\nUtilisateur : $prenom $nom\nSimilarité : ${(similarity * 100).toStringAsFixed(0)}%',
+                  ),
                   backgroundColor: Colors.red,
                   duration: const Duration(seconds: 5),
                 ),
@@ -262,6 +225,15 @@ class _RegisterFormState extends State<RegisterForm> {
     }
   }
 
+  ///snackbar helper
+  void _showSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.orange),
+      );
+    }
+  }
+
   // ========== FONCTION INSCRIPTION ==========
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -280,7 +252,7 @@ class _RegisterFormState extends State<RegisterForm> {
 
     try {
       print('\n📸 === ÉTAPE 1 : EXTRACTION EMBEDDING ===');
-      List<double>? embedding = await _extraireEmbedding(_photoPrise! );
+      List<double>? embedding = await _extraireEmbedding(_photoPrise!);
 
       if (embedding == null) {
         setState(() => _isLoading = false);
@@ -299,21 +271,21 @@ class _RegisterFormState extends State<RegisterForm> {
       print('\n🔐 === ÉTAPE 3 : CRÉATION COMPTE AUTH ===');
       UserCredential userCred = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
-        email: _emailController.text. trim(),
-        password: _passwordController.text.trim(),
-      );
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
-      String uid = userCred.user!. uid;
+      String uid = userCred.user!.uid;
       print('✅ UID créé : $uid');
 
       print('\n📤 === ÉTAPE 4 : UPLOAD PHOTO CLOUDINARY ===');
       String photoUrl = await _uploadPhoto(_photoPrise!, uid);
 
       print('\n💾 === ÉTAPE 5 : SAUVEGARDE FIRESTORE ===');
-      await FirebaseFirestore.instance. collection('users'). doc(uid).set({
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'id': uid,
-        'nom': _nomController.text.trim(). toUpperCase(),
-        'prenom': _prenomController.text. trim(),
+        'nom': _nomController.text.trim().toUpperCase(),
+        'prenom': _prenomController.text.trim(),
         'email': _emailController.text.trim(),
         'role': 'etudiant',
         'filiere_id': _selectedFiliereId,
@@ -326,14 +298,14 @@ class _RegisterFormState extends State<RegisterForm> {
       print('\n🎉 === INSCRIPTION RÉUSSIE ===\n');
 
       if (mounted) {
-        ScaffoldMessenger.of(context). showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Bienvenue sur PresenceConnect !'),
-            backgroundColor: Colors. green,
+            backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
         );
-        _formKey.currentState! .reset();
+        _formKey.currentState!.reset();
         setState(() {
           _photoPrise = null;
           _selectedFiliereId = null;
@@ -355,7 +327,7 @@ class _RegisterFormState extends State<RegisterForm> {
       );
     } on FirebaseException catch (e) {
       print('❌ ERREUR FIREBASE : ${e.code} - ${e.message}');
-      ScaffoldMessenger. of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Erreur Firebase : ${e.message}'),
           backgroundColor: Colors.red,
@@ -387,19 +359,27 @@ class _RegisterFormState extends State<RegisterForm> {
               children: [
                 CircleAvatar(
                   radius: 40,
-                  backgroundColor:
-                      _photoPrise == null ? Colors.red[100] : Colors.green[100],
-                  backgroundImage:
-                      _photoPrise != null ? FileImage(_photoPrise!) : null,
+                  backgroundColor: _photoPrise == null
+                      ? Colors.red[100]
+                      : Colors.green[100],
+                  backgroundImage: _photoPrise != null
+                      ? FileImage(_photoPrise!)
+                      : null,
                   child: _photoPrise == null
-                      ? const Icon(Icons.camera_alt, size: 30, color: Colors.red)
+                      ? const Icon(
+                          Icons.camera_alt,
+                          size: 30,
+                          color: Colors.red,
+                        )
                       : null,
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  _photoPrise == null ? "Appuyer pour scanner *" : "Visage scanné ! ",
+                  _photoPrise == null
+                      ? "Appuyer pour scanner *"
+                      : "Visage scanné ! ",
                   style: TextStyle(
-                    color: _photoPrise == null ?  Colors.red : Colors.green,
+                    color: _photoPrise == null ? Colors.red : Colors.green,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -415,7 +395,7 @@ class _RegisterFormState extends State<RegisterForm> {
               prefixIcon: Icon(Icons.person),
               border: OutlineInputBorder(),
             ),
-            validator: (v) => v! .isEmpty ? 'Requis' : null,
+            validator: (v) => v!.isEmpty ? 'Requis' : null,
           ),
           const SizedBox(height: 10),
           TextFormField(
@@ -429,20 +409,22 @@ class _RegisterFormState extends State<RegisterForm> {
           ),
           const SizedBox(height: 10),
           StreamBuilder<QuerySnapshot>(
-            stream:
-                FirebaseFirestore.instance.collection('fillieres').snapshots(),
+            stream: FirebaseFirestore.instance
+                .collection('fillieres')
+                .snapshots(),
             builder: (context, snapshot) {
-              if (! snapshot.hasData) {
+              if (!snapshot.hasData) {
                 return const Center(child: LinearProgressIndicator());
               }
 
-              List<DropdownMenuItem<String>> filiereItems =
-                  snapshot.data!. docs.map((doc) {
-                return DropdownMenuItem(
-                  value: doc.id,
-                  child: Text(doc['nom']),
-                );
-              }).toList();
+              List<DropdownMenuItem<String>> filiereItems = snapshot.data!.docs
+                  .map((doc) {
+                    return DropdownMenuItem(
+                      value: doc.id,
+                      child: Text(doc['nom']),
+                    );
+                  })
+                  .toList();
 
               return DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
@@ -452,7 +434,8 @@ class _RegisterFormState extends State<RegisterForm> {
                 ),
                 value: _selectedFiliereId,
                 items: filiereItems,
-                onChanged: (value) => setState(() => _selectedFiliereId = value),
+                onChanged: (value) =>
+                    setState(() => _selectedFiliereId = value),
                 validator: (v) =>
                     v == null ? 'Veuillez choisir une filière' : null,
               );
@@ -467,7 +450,7 @@ class _RegisterFormState extends State<RegisterForm> {
               prefixIcon: Icon(Icons.email),
               border: OutlineInputBorder(),
             ),
-            validator: (v) => v!. contains('@') ? null : 'Email invalide',
+            validator: (v) => v!.contains('@') ? null : 'Email invalide',
           ),
           const SizedBox(height: 10),
           TextFormField(
@@ -491,7 +474,7 @@ class _RegisterFormState extends State<RegisterForm> {
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
               child: _isLoading
-                  ?  const SizedBox(
+                  ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
@@ -501,7 +484,10 @@ class _RegisterFormState extends State<RegisterForm> {
                     )
                   : const Text(
                       "S'inscrire",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
             ),
           ),

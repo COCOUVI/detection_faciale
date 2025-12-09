@@ -43,6 +43,8 @@ dependencies:
   tflite_flutter: ^0.12.1
   image: ^4.5.4
   cloudinary_public: ^0.21.0  
+  crypto: ^3.0.3
+  
 
 dev_dependencies:
   flutter_test:
