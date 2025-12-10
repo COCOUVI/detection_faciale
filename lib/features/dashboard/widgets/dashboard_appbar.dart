@@ -23,11 +23,11 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color: Colors.white),
           ),
           Text(
             'Bonjour, $userName',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal,color:  Colors.white),
           ),
         ],
       ),
@@ -36,8 +36,12 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
         onPressed: onMenuPressed,
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.notifications), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.person), onPressed: () {}),
+        IconButton(icon: const Icon(Icons.notifications), onPressed: () {},
+          color: Colors.white,
+        ),
+        IconButton(icon: const Icon(Icons.person), onPressed: () {},
+          color: Colors.white,
+        ),
       ],
       flexibleSpace: Container(
         decoration: BoxDecoration(

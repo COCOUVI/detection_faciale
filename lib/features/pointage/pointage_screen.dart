@@ -1,10 +1,114 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
-class PointageScreen extends StatelessWidget {
+class PointageScreen extends StatefulWidget {
   const PointageScreen({Key? key}) : super(key: key);
 
   @override
+  State<PointageScreen> createState() => _PointageScreenState();
+}
+
+class _PointageScreenState extends State<PointageScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String? _etudiantId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEtudiantId();
+  }
+
+  Future<void> _loadEtudiantId() async {
+    // TODO: Récupérer l'ID de l'étudiant connecté
+    // Exemple: depuis SharedPreferences, Provider, Firebase Auth, etc.
+    setState(() {
+      _etudiantId =
+          "w5Z7syKWfVRC0Hm4bKJzIWoIciY2"; // À remplacer par la vraie méthode
+    });
+  }
+
+  // Fonction pour récupérer les pointages
+  Stream<QuerySnapshot> _getPointagesStream() {
+    if (_etudiantId == null) {
+      return const Stream.empty();
+    }
+
+    try {
+      return _firestore
+          .collection('presences')
+          .where('etudiant_id', isEqualTo: _etudiantId)
+          .orderBy('heure_debut', descending: true)
+          .snapshots();
+    } catch (e) {
+      print("Exception: $e");
+      return const Stream.empty();
+    }
+  }
+
+  // Formater la date
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    final dateOnly = DateTime(date.year, date.month, date.day);
+
+    if (dateOnly == today) {
+      return 'Aujourd\'hui';
+    } else if (dateOnly == yesterday) {
+      return 'Hier';
+    } else {
+      return DateFormat('dd/MM/yyyy').format(date);
+    }
+  }
+
+  // Formater l'heure
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return '--:--';
+    return DateFormat('HH:mm').format(timestamp.toDate());
+  }
+
+  // Déterminer le statut
+  String _getStatus(Map<String, dynamic> data) {
+    if (data['is_present'] == false) {
+      return 'Absent';
+    }
+
+    return 'Présent';
+  }
+
+  // Couleur selon le statut
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Présent':
+        return Colors.green;
+      case 'Absent':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // Icône selon le statut
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'Présent':
+        return Icons.check_circle;
+      case 'Absent':
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_etudiantId == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -20,66 +124,61 @@ class PointageScreen extends StatelessWidget {
               'Historique de vos présences',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-
-            const SizedBox(height: 20),
-
-            // Filtres
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: 'Ce mois',
-                    items:
-                        [
-                              'Aujourd\'hui',
-                              'Cette semaine',
-                              'Ce mois',
-                              'Cette année',
-                            ]
-                            .map(
-                              (String value) => DropdownMenuItem<String>(
-                                value: value,
-                                child: Text(value),
-                              ),
-                            )
-                            .toList(),
-                    onChanged: (value) {},
-                    decoration: const InputDecoration(
-                      labelText: 'Période',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: 'Tous',
-                    items: ['Tous', 'Présent', 'Retard', 'Absent']
-                        .map(
-                          (String value) => DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {},
-                    decoration: const InputDecoration(
-                      labelText: 'Statut',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
             const SizedBox(height: 20),
 
             // Liste des pointages
             Expanded(
-              child: ListView.builder(
-                itemCount: 10,
-                itemBuilder: (context, index) {
-                  return _buildPointageCard(index);
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _getPointagesStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error, color: Colors.red, size: 50),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Erreur: ${snapshot.error}',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.history, size: 64, color: Colors.grey),
+                          SizedBox(height: 20),
+                          Text(
+                            'Aucun pointage trouvé',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final pointages = snapshot.data!.docs;
+
+                  return ListView.builder(
+                    itemCount: pointages.length,
+                    itemBuilder: (context, index) {
+                      final data =
+                          pointages[index].data() as Map<String, dynamic>;
+                      final status = _getStatus(data);
+
+                      return _buildPointageCard(data, status);
+                    },
+                  );
                 },
               ),
             ),
@@ -89,89 +188,129 @@ class PointageScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPointageCard(int index) {
-    final List<Map<String, dynamic>> pointages = [
-      {
-        'date': 'Aujourd\'hui',
-        'arrivee': '08:30',
-        'depart': '17:45',
-        'status': 'Présent',
-        'color': Colors.green,
-      },
-      {
-        'date': 'Hier',
-        'arrivee': '08:45',
-        'depart': '17:30',
-        'status': 'Retard',
-        'color': Colors.orange,
-      },
-      {
-        'date': '12/11/2024',
-        'arrivee': '08:15',
-        'depart': '18:00',
-        'status': 'Présent',
-        'color': Colors.green,
-      },
-      {
-        'date': '11/11/2024',
-        'arrivee': '--:--',
-        'depart': '--:--',
-        'status': 'Absent',
-        'color': Colors.red,
-      },
-    ];
+  Widget _buildPointageCard(Map<String, dynamic> data, String status) {
+    final heureDebut = data['heure_debut'] as Timestamp?;
+    final heureFin = data['heure_fin'] as Timestamp?;
+    final nomCours = data['nom_cours'] ?? 'Cours';
+    final salle = data['salle'] ?? 'Salle non spécifiée';
 
-    final pointage = pointages[index % pointages.length];
+    final color = _getStatusColor(status);
+    final icon = _getStatusIcon(status);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: pointage['color'].withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            pointage['status'] == 'Présent'
-                ? Icons.check_circle
-                : pointage['status'] == 'Retard'
-                ? Icons.access_time
-                : Icons.cancel,
-            color: pointage['color'],
-          ),
-        ),
-        title: Text(
-          pointage['date'],
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 5),
+            // En-tête avec cours et statut
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.login, size: 16, color: Colors.grey),
-                const SizedBox(width: 5),
-                Text('Arrivée: ${pointage['arrivee']}'),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nomCours,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Salle: $salle',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Chip(
+                  label: Text(
+                    status,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  backgroundColor: color,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                ),
               ],
             ),
-            Row(
-              children: [
-                const Icon(Icons.logout, size: 16, color: Colors.grey),
-                const SizedBox(width: 5),
-                Text('Départ: ${pointage['depart']}'),
-              ],
-            ),
+
+            const SizedBox(height: 12),
+
+            // Date et heures
+            if (heureDebut != null) ...[
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDate(heureDebut),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Arrivée',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            Text(
+                              _formatTime(heureDebut),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Départ',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            Text(
+                              _formatTime(heureFin),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ),
-        trailing: Chip(
-          label: Text(
-            pointage['status'],
-            style: TextStyle(color: Colors.white),
-          ),
-          backgroundColor: pointage['color'],
         ),
       ),
     );
