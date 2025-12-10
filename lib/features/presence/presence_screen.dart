@@ -28,6 +28,12 @@ class _PresenceScreenState extends State<PresenceScreen> {
     ),
   );
 
+  // CONSTANTES POUR LES SEUILS
+  static const double RECOGNITION_THRESHOLD =
+      0.7; // 70% pour reconnaître l'utilisateur
+  static const double DUPLICATE_THRESHOLD =
+      0.85; // 85% pour détecter les doublons
+
   bool _isScanning = false;
   bool _presenceMarked = false;
   String _currentCourseId = '';
@@ -38,6 +44,7 @@ class _PresenceScreenState extends State<PresenceScreen> {
   List<Map<String, dynamic>> _todayCourses = [];
   bool _isLoading = true;
   File? _scannedPhoto;
+  List<double>? _userEmbedding;
 
   @override
   void initState() {
@@ -59,6 +66,14 @@ class _PresenceScreenState extends State<PresenceScreen> {
       if (userDoc.exists) {
         final userData = userDoc.data() as Map<String, dynamic>;
         _userFiliereId = userData['filiere_id'] as String?;
+
+        if (userData['embedding'] != null) {
+          _userEmbedding = List<double>.from(userData['embedding']);
+          print('Embedding chargé: ${_userEmbedding!.length} dimensions');
+        } else {
+          print('Aucun embedding trouvé pour l\'utilisateur');
+        }
+
         await _loadTodayCourses();
       }
     }
@@ -104,7 +119,7 @@ class _PresenceScreenState extends State<PresenceScreen> {
       }
 
       if (courses.isEmpty) {
-        _simulateDemoCourse(); // on garde la démo fallback si pas de cours
+        _simulateDemoCourse();
         return;
       }
 
@@ -286,7 +301,11 @@ class _PresenceScreenState extends State<PresenceScreen> {
   }
 
   double _cosineSimilarity(List<double> a, List<double> b) {
-    if (a.length != b.length) return 0.0;
+    if (a.length != b.length) {
+      print('Erreur: dimensions différentes (${a.length} vs ${b.length})');
+      return 0.0;
+    }
+
     double dot = 0.0, na = 0.0, nb = 0.0;
     for (int i = 0; i < a.length; i++) {
       dot += a[i] * b[i];
@@ -305,6 +324,40 @@ class _PresenceScreenState extends State<PresenceScreen> {
     }
   }
 
+  // Vérifier si un autre utilisateur a le même embedding
+  Future<bool> _checkForDuplicateEmbedding(
+    List<double> currentEmbedding,
+  ) async {
+    try {
+      final usersSnapshot = await _firestore.collection('users').get();
+
+      for (var userDoc in usersSnapshot.docs) {
+        final userData = userDoc.data();
+        if (userData['embedding'] != null && userDoc.id != _currentUserId) {
+          final otherEmbedding = List<double>.from(userData['embedding']);
+
+          final similarity = _cosineSimilarity(
+            currentEmbedding,
+            otherEmbedding,
+          );
+
+          // CHANGEMENT ICI : 85% au lieu de 70%
+          if (similarity > DUPLICATE_THRESHOLD) {
+            print('Doublon potentiel détecté avec utilisateur: ${userDoc.id}');
+            print(
+              'Similarité: ${similarity.toStringAsFixed(3)} (seuil: ${DUPLICATE_THRESHOLD * 100}%)',
+            );
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      print('Erreur vérification doublon embedding: $e');
+      return false;
+    }
+  }
+
   // ----------------- SCAN & VERIFY -----------------
   Future<void> _startScan() async {
     if (_currentCourseId.isEmpty) {
@@ -313,6 +366,13 @@ class _PresenceScreenState extends State<PresenceScreen> {
     }
     if (_presenceMarked) {
       setState(() => _errorMessage = 'Présence déjà marquée pour ce cours');
+      return;
+    }
+    if (_userEmbedding == null) {
+      setState(
+        () => _errorMessage =
+            'Aucun profil facial enregistré. Veuillez d\'abord enregistrer votre visage.',
+      );
       return;
     }
 
@@ -338,42 +398,39 @@ class _PresenceScreenState extends State<PresenceScreen> {
 
       _scannedPhoto = File(picked.path);
 
-      // 1) extraire embedding du scan
       final embeddingScan = await _extraireEmbedding(_scannedPhoto!);
       if (embeddingScan == null) {
         setState(() => _isScanning = false);
         return;
       }
 
-      // 2) récupérer embedding enregistré pour l'utilisateur courant
-      final userDocRef = _firestore.collection('users').doc(_currentUserId);
-      final userSnapshot = await userDocRef.get();
-      if (!userSnapshot.exists) {
-        throw Exception('Utilisateur non trouvé en base');
-      }
-      final userData = userSnapshot.data()!;
-      if (userData['embedding'] == null) {
-        throw Exception('Aucun embedding enregistré pour ce compte');
-      }
-      final List<double> savedEmbedding = List<double>.from(
-        userData['embedding'],
-      );
+      print('Embedding scanné: ${embeddingScan.length} dimensions');
 
-      // 3) comparer (cosine similarity)
-      final similarity = _cosineSimilarity(savedEmbedding, embeddingScan);
-      print('Similarity: $similarity');
-
-      const double threshold = 0.55; // tu peux ajuster ce seuil
-      if (similarity < threshold) {
+      final isDuplicate = await _checkForDuplicateEmbedding(embeddingScan);
+      if (isDuplicate) {
         setState(() {
           _isScanning = false;
-          _errorMessage =
-              'Visage non reconnu (similarité ${(similarity * 100).toStringAsFixed(1)}%)';
+          _errorMessage = 'Cette personne a déjà un compte dans le système';
         });
         return;
       }
 
-      // 4) verifier une nouvelle fois si déjà présent (sécurité)
+      final similarity = _cosineSimilarity(_userEmbedding!, embeddingScan);
+      print(
+        'Similarité avec embedding utilisateur: ${similarity.toStringAsFixed(3)}',
+      );
+      print('Seuil de reconnaissance: ${RECOGNITION_THRESHOLD * 100}%');
+
+      // CHANGEMENT ICI : 70% au lieu de 55%
+      if (similarity < RECOGNITION_THRESHOLD) {
+        setState(() {
+          _isScanning = false;
+          _errorMessage =
+              'Visage non reconnu (similarité ${(similarity * 100).toStringAsFixed(1)}% - minimum ${(RECOGNITION_THRESHOLD * 100).toInt()}%)';
+        });
+        return;
+      }
+
       final presenceQuery = await _firestore
           .collection('presences')
           .where('cours_id', isEqualTo: _currentCourseId)
@@ -390,17 +447,21 @@ class _PresenceScreenState extends State<PresenceScreen> {
         return;
       }
 
-      // 5) enregistrer la présence avec les champs exacts
-      // récupérer les infos du cours sélectionné
       final course = _todayCourses.firstWhere(
         (c) => c['cours_id'] == _currentCourseId,
         orElse: () => _todayCourses.isNotEmpty ? _todayCourses.first : {},
       );
 
+      final userDocRef = _firestore.collection('users').doc(_currentUserId);
+      final userSnapshot = await userDocRef.get();
+      final userData = userSnapshot.data()!;
+
       await _firestore.collection('presences').add({
         'cours_id': _currentCourseId,
         'etudiant_id': _currentUserId,
         'nom': userData['nom'] ?? '',
+        'prenom': userData['prenom'] ?? '',
+        'email': userData['email'] ?? '',
         'description': userData['description'] ?? '',
         'filiere_id': course['filiere_id'] ?? userData['filiere_id'] ?? '',
         'nom_cours': course['nom_cours'] ?? _currentCourseName,
@@ -410,6 +471,7 @@ class _PresenceScreenState extends State<PresenceScreen> {
         'is_present': true,
         'created_at': FieldValue.serverTimestamp(),
         'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'embedding_similarity': similarity,
       });
 
       setState(() {
@@ -419,8 +481,10 @@ class _PresenceScreenState extends State<PresenceScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Présence enregistrée avec succès !'),
+        SnackBar(
+          content: Text(
+            'Présence enregistrée avec succès ! (${(similarity * 100).toStringAsFixed(1)}% de correspondance)',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -448,7 +512,6 @@ class _PresenceScreenState extends State<PresenceScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   Card(
                     elevation: 3,
                     child: Padding(
@@ -467,6 +530,14 @@ class _PresenceScreenState extends State<PresenceScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
+                          if (_userEmbedding == null)
+                            Text(
+                              '⚠️ Aucun profil facial enregistré',
+                              style: TextStyle(
+                                color: Colors.orange[800],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           if (_errorMessage.isNotEmpty)
                             Text(
                               _errorMessage,
@@ -474,7 +545,28 @@ class _PresenceScreenState extends State<PresenceScreen> {
                                 color:
                                     _errorMessage.toLowerCase().contains('dém')
                                     ? Colors.blue
+                                    : _errorMessage.toLowerCase().contains(
+                                        'succès',
+                                      )
+                                    ? Colors.green
                                     : Colors.orange,
+                              ),
+                            ),
+                          if (_currentCourseId.isNotEmpty &&
+                              _userEmbedding != null)
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Seuil de reconnaissance: ${(RECOGNITION_THRESHOLD * 100).toInt()}%',
+                                style: TextStyle(
+                                  color: Colors.indigo[800],
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                         ],
@@ -483,7 +575,6 @@ class _PresenceScreenState extends State<PresenceScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Liste des cours
                   if (_todayCourses.isNotEmpty)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -550,7 +641,6 @@ class _PresenceScreenState extends State<PresenceScreen> {
                     ),
                   const SizedBox(height: 24),
 
-                  // Zone de scan
                   Card(
                     elevation: 3,
                     child: Padding(
@@ -562,7 +652,9 @@ class _PresenceScreenState extends State<PresenceScreen> {
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Colors.indigo.shade300,
+                                color: _userEmbedding == null
+                                    ? Colors.orange
+                                    : Colors.indigo.shade300,
                                 width: 2,
                               ),
                               color: Colors.grey[50],
@@ -587,6 +679,11 @@ class _PresenceScreenState extends State<PresenceScreen> {
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Vérification contre la base de données',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
                                       ],
                                     ),
                                   )
@@ -594,7 +691,7 @@ class _PresenceScreenState extends State<PresenceScreen> {
                                 ? const Center(
                                     child: Column(
                                       mainAxisAlignment:
-                                          MainAxisAlignment.center,
+                                         MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.verified,
@@ -619,14 +716,25 @@ class _PresenceScreenState extends State<PresenceScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         Icon(
-                                          Icons.face,
+                                          _userEmbedding == null
+                                              ? Icons.warning
+                                              : Icons.face,
                                           size: 60,
-                                          color: Colors.indigo.shade400,
+                                          color: _userEmbedding == null
+                                              ? Colors.orange
+                                              : Colors.indigo.shade400,
                                         ),
                                         const SizedBox(height: 16),
-                                        const Text(
-                                          'Zone de reconnaissance',
-                                          style: TextStyle(fontSize: 14),
+                                        Text(
+                                          _userEmbedding == null
+                                              ? 'Profil facial non enregistré'
+                                              : 'Zone de reconnaissance',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: _userEmbedding == null
+                                                ? Colors.orange[800]
+                                                : Colors.black,
+                                          ),
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
@@ -650,11 +758,14 @@ class _PresenceScreenState extends State<PresenceScreen> {
                               onPressed:
                                   (_isScanning ||
                                       _presenceMarked ||
-                                      _currentCourseId.isEmpty)
+                                      _currentCourseId.isEmpty ||
+                                      _userEmbedding == null)
                                   ? null
                                   : _startScan,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.indigo,
+                                backgroundColor: _userEmbedding == null
+                                    ? Colors.grey
+                                    : Colors.indigo,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
                                 ),
@@ -683,7 +794,9 @@ class _PresenceScreenState extends State<PresenceScreen> {
                                       ],
                                     )
                                   : Text(
-                                      _presenceMarked
+                                      _userEmbedding == null
+                                          ? 'Profil facial requis'
+                                          : _presenceMarked
                                           ? 'Présence déjà enregistrée'
                                           : 'Scanner mon visage',
                                       style: const TextStyle(fontSize: 16),
@@ -695,7 +808,6 @@ class _PresenceScreenState extends State<PresenceScreen> {
                     ),
                   ),
 
-                  // Horloge
                   Container(
                     margin: const EdgeInsets.only(top: 16),
                     padding: const EdgeInsets.all(16),
