@@ -1,8 +1,9 @@
+import 'package:detection_fasciale/features/home/home.dart';
 import 'package:detection_fasciale/features/login/login_screen.dart';
+import 'package:detection_fasciale/features/register/register_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'features/register/register_screen.dart'; // On importe notre feature
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,10 +20,21 @@ class PresenceConnectApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'PresenceConnect',
       theme: ThemeData(
-        primarySwatch: Colors.indigo, // Une couleur un peu "Pro"
+        primarySwatch: Colors.indigo,
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.indigo,
+        ),
       ),
-      home: const RegisterScreen(),
+      home: const HomeScreen(), // Page d'accueil
+      // Routes nommées (optionnel mais recommandé pour la navigation)
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
+        '/home': (context) => const HomeScreen(),
+      },
     );
   }
 }

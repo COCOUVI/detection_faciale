@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:detection_fasciale/features/dashboard/dashboard.dart';
 
 class LoginForm extends StatefulWidget {
   const LoginForm({super.key});
@@ -10,7 +11,6 @@ class LoginForm extends StatefulWidget {
 
 class _LoginFormState extends State<LoginForm> {
   final _formKey = GlobalKey<FormState>();
-
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -37,11 +37,10 @@ class _LoginFormState extends State<LoginForm> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Connexion réussie !'),
-          backgroundColor: Colors.green,
-        ),
+      // Redirection vers le dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
       );
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Erreur de connexion';
@@ -58,10 +57,7 @@ class _LoginFormState extends State<LoginForm> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur : $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -85,9 +81,8 @@ class _LoginFormState extends State<LoginForm> {
               prefixIcon: Icon(Icons.email),
               border: OutlineInputBorder(),
             ),
-            validator: (v) => v != null && v.contains('@')
-                ? null
-                : 'Email invalide',
+            validator: (v) =>
+                v != null && v.contains('@') ? null : 'Email invalide',
           ),
           const SizedBox(height: 10),
 
@@ -132,7 +127,10 @@ class _LoginFormState extends State<LoginForm> {
                     )
                   : const Text(
                       'Se connecter',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
             ),
           ),
