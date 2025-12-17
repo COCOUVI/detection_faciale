@@ -236,12 +236,15 @@ L'étudiant accède à ses statistiques de présence, son historique complet et 
 
 Ce projet a été développé par l'équipe AIP de l'ENEAM :
 
-| Développeur | Rôle | GitHub |
-|------------|------|--------|
-| **COCOUVI Alexandro** | Lead Developer | [@COCOUVI](https://github.com/COCOUVI) |
-| **Hamid-HBS** | Developer | [@hamid-hbs](https://github.com/hamid-hbs) |
-| **John230624** | Developer | [@John230624](https://github.com/John230624) |
+## 👥 Équipe et collaborateurs
 
+| Développeur            | Branch(s)               | GitHub                                            |
+|------------------------|-------------------------|---------------------------------------------------|
+| **COCOUVI Alexandro**  | xandrothedev, main      | [@COCOUVI](https://github.com/COCOUVI)            |
+| **Hamid-HBS**          | hamid-branch, hamid-branchh | [@hamid-hbs](https://github.com/hamid-hbs)        |
+| **John230624**         | john-geeek              | [@John230624](https://github.com/John230624)      |
+| **Elfrieda**           | Elfrieda_branch         | *(ajoute le lien GitHub si besoin)*               |
+| **Daryl**              | daryl-branch            | *(ajoute le lien GitHub si besoin)*               |
 ---
 
 ## 🔮 Perspectives d'évolution
