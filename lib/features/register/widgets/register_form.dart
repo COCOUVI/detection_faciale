@@ -194,7 +194,7 @@ class _RegisterFormState extends State<RegisterForm> {
             '   📊 Similarité avec $prenom $nom : ${(similarity * 100).toStringAsFixed(2)}%',
           );
 
-          if (similarity > 0.55) {
+          if (similarity > 0.85) {
             print('❌ VISAGE SIMILAIRE DÉTECTÉ !');
             print('   Utilisateur existant : $prenom $nom');
 

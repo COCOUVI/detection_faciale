@@ -25,7 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _todayCours = 0;
   bool _isLoadingStats = true;
   String? _userNomComplet;
-  String? _userFiliereId;
+  String? _userFiliereNom;
   String? _currentUserId;
 
   @override
@@ -45,16 +45,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .collection('users')
             .doc(user.uid)
             .get();
+        String? filiereId;
         if (userDoc.exists) {
           final userData = userDoc.data() as Map<String, dynamic>;
           final nom = userData['nom'] ?? '';
           final prenom = userData['prenom'] ?? '';
           _userNomComplet = '$nom $prenom';
-          _userFiliereId = userData['filiere_id'] as String?;
+          filiereId = userData['filiere_id'] as String?;
         }
 
-        // 2. Charger les statistiques
-        await _loadStatistics();
+        // 2. Récupérer le nom de la filière
+        if (filiereId != null) {
+          final filiereDoc = await _firestore
+              .collection('fillieres')
+              .doc(filiereId)
+              .get();
+          if (filiereDoc.exists) {
+            final filiereData = filiereDoc.data() as Map<String, dynamic>;
+            _userFiliereNom = filiereData['nom'];
+          } else {
+            _userFiliereNom = null;
+          }
+        }
+
+        // 3. Charger les statistiques
+        await _loadStatistics(filiereId);
 
         setState(() {
           _isLoadingStats = false;
@@ -72,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _loadStatistics() async {
+  Future<void> _loadStatistics(String? filiereId) async {
     if (_currentUserId == null) return;
 
     try {
@@ -106,10 +121,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('✅ Présences aujourd\'hui: $_todayPresences');
 
       // 3. COMPTER LES COURS SI L'UTILISATEUR A UNE FILIÈRE
-      if (_userFiliereId != null) {
+      if (filiereId != null) {
         final coursQuery = await _firestore
             .collection('cours')
-            .where('filiere_id', isEqualTo: _userFiliereId)
+            .where('filiere_id', isEqualTo: filiereId)
             .get();
 
         _totalCours = coursQuery.docs.length;
@@ -117,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final todayCoursQuery = await _firestore
             .collection('cours')
-            .where('filiere_id', isEqualTo: _userFiliereId)
+            .where('filiere_id', isEqualTo: filiereId)
             .where(
               'heure_debut',
               isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart),
@@ -131,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // 4. AFFICHER LES DONNÉES BRUTES POUR DÉBOGAGE
       print('📊 STATISTIQUES FINALES:');
       print('   - ID Utilisateur: $_currentUserId');
-      print('   - Filière ID: $_userFiliereId');
+      print('   - Filière nom: $_userFiliereNom');
       print('   - Total présences: $_totalPresences');
       print('   - Présences aujourd\'hui: $_todayPresences');
       print('   - Total cours: $_totalCours');
@@ -192,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           _isLoadingStats = true;
         });
-        await _loadStatistics();
+        await _loadUserData(); // Refreshes everything including filiere name
         setState(() {
           _isLoadingStats = false;
         });
@@ -305,12 +320,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         const Spacer(),
-                        if (_currentUserId != null)
+                        if (_userNomComplet != null)
                           Text(
-                            'ID: ${_currentUserId!.substring(0, 8)}...',
+                            _userNomComplet!,
                             style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.8),
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                       ],
@@ -332,9 +348,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildStatCard(
                   title: 'Présences totales',
                   value: _isLoadingStats ? '...' : '$_totalPresences',
-                  subtitle: _currentUserId != null
-                      ? 'Pour cet utilisateur'
-                      : 'Non connecté',
+                  subtitle: _userNomComplet ?? 'Utilisateur',
                   icon: Icons.check_circle_rounded,
                   color: const Color(0xFF10B981),
                 ),
@@ -402,17 +416,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 16),
                   _buildDetailItem(
                     icon: Icons.person_rounded,
-                    label: 'ID Utilisateur',
-                    value: _currentUserId != null
-                        ? '${_currentUserId!.substring(0, 12)}...'
-                        : 'Non disponible',
+                    label: 'Nom complet',
+                    value: _userNomComplet ?? 'Non disponible',
                   ),
                   _buildDetailItem(
                     icon: Icons.school_rounded,
                     label: 'Filière',
-                    value: _userFiliereId != null
-                        ? '${_userFiliereId!.substring(0, 8)}...'
-                        : 'Non assignée',
+                    value: _userFiliereNom ?? 'Non assignée',
                   ),
                   _buildDetailItem(
                     icon: Icons.date_range_rounded,
@@ -569,7 +579,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         _buildDebugItem('Présences totales', '$_totalPresences'),
                         _buildDebugItem('Présences aujourd\'hui', '$_todayPresences'),
-                        if (_userFiliereId != null) ...[
+                        if (_userFiliereNom != null) ...[
                           _buildDebugItem('Cours total', '$_totalCours'),
                           _buildDebugItem('Cours aujourd\'hui', '$_todayCours'),
                         ],
@@ -701,7 +711,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      );
+    );
   }
 
   Widget _buildActionButton({
