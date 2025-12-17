@@ -285,7 +285,7 @@ Merci à l'ENEAM pour l'encadrement de ce projet et aux enseignants du parcours 
 
 <div align="center">
 
-**Développé avec ❤️ par l'équipe AIP - ENEAM**
+**Développé avec par l'équipe AIP - ENEAM**
 
 *"La présence connectée : simple, fiable et adaptée à l'enseignement moderne"*
 
